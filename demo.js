@@ -1,7 +1,7 @@
 "use strict";
 // Demo of the Blokus experiment: the practice game and one puzzle, for showing people
 // what the study looks like. It is experiment.js with the study parts taken out:
-// no consent page, no prize entry, no fixed order, nothing saved in the browser and
+// no consent page, no fixed order, nothing saved in the browser and
 // nothing sent anywhere. The game itself (rules, controls, clock, perfect opponent)
 // is the same, and it uses the same blokus_engine.js, blokus_lookup.js and opponent_web/.
 
