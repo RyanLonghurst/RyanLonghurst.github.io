@@ -106,12 +106,18 @@
 
   #message { min-height: 1.6em; margin-top: 8px; color: var(--warn); }
   .result {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    background: #fff; border: 2px solid var(--grid); border-radius: 10px; padding: 14px 18px; margin-top: 12px;
-    max-width: calc(8 * var(--size));
+    display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+    background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
   }
-  .result-text { flex: 1; min-width: 200px; }
+  .result .btn { align-self: flex-start; }
+  .result-text { width: 100%; }
   #resultMain { font-size: 1.4rem; font-weight: 700; }
+  .score { margin-top: 8px; }
+  .score-value { font-size: 1.4rem; font-weight: 700; }
+  #scoreChange { margin-left: 6px; font-weight: 600; }
+  #scoreChange.up { color: #1F7A3A; }
+  #scoreChange.down { color: var(--warn); }
+  .score-note { color: var(--muted); font-size: 14px; }
 
   .side { flex: 1; min-width: 260px; max-width: 320px; }
   .side h2 { font-size: 1rem; margin: 0 0 6px; }
@@ -186,6 +192,7 @@
   <ul>
     <li>The puzzle starts with one piece already placed for each player. <span class="side-line"></span></li>
     <li>The computer plays perfectly. Perfect play wins by exactly 1 point, and that is the best result possible, so a single wrong move loses the win.</li>
+    <li>After each game you get a score out of 100 as a rough guide to how well you played. 100 means every move was perfect.</li>
     <li>In the full study there are nine puzzles like this one. Participants have 10 minutes for each and can play it as many times as they like. After 10 minutes they can move on, or keep playing for as long as they want. In this demo you can leave at any time.</li>
   </ul>
   <h2>Controls</h2>
@@ -227,14 +234,20 @@
     <div class="layout">
       <div>
         <div id="board" class="board"></div>
-        <div id="result" class="result" hidden>
-          <div class="result-text"><div id="resultMain"></div><div id="resultSub"></div></div>
-          <button id="againBtn" class="btn primary">Try again</button>
-          <button id="practiceDoneBtn" class="btn" hidden>Back to menu</button>
-        </div>
         <div id="message" aria-live="polite"></div>
       </div>
       <div class="side">
+        <div id="result" class="result" hidden>
+          <div class="result-text">
+            <div id="resultMain"></div><div id="resultSub"></div>
+            <div id="resultScore" class="score" hidden>
+              Score <span id="scoreValue" class="score-value"></span> out of 100 <span id="scoreChange"></span>
+              <div class="score-note">A rough guide to how well you played: 100 means every move was perfect.</div>
+            </div>
+          </div>
+          <button id="againBtn" class="btn primary">Try again</button>
+          <button id="practiceDoneBtn" class="btn" hidden>Back to menu</button>
+        </div>
         <div id="timeup" class="timeup" hidden>
           <p id="timeupText"></p>
           <button id="nextBtn" class="btn primary"></button>

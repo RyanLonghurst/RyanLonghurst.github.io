@@ -67,7 +67,10 @@ function loadTable() {
   if (!tablePromise) {
     tablePromise = (async () => {
       const manifest = await (await fetch("opponent_web/manifest.json")).json();
-      return loadReplyTable("opponent_web/" + manifest.openings[String(OPENING)].file);
+      const info = manifest.openings[String(OPENING)];
+      const table = await loadReplyTable("opponent_web/" + info.file);
+      table.startValue = info.startValue ?? null;          // Blue minus Yellow, from the export
+      return table;
     })();
     tablePromise.catch(() => { tablePromise = null; });   // allow a retry after a failed download
   }
@@ -103,7 +106,8 @@ async function startPuzzle() {
     return;
   }
   if (!$("play").hidden || $("menu").hidden) return;   // something else was opened while it loaded
-  game = { kind: "round", opening: OPENING, human: SIDE, table, attempt: 0, best: null, elapsedMs: 0, minimumReached: false };
+  game = { kind: "round", opening: OPENING, human: SIDE, table, attempt: 0, best: null, lastScore: null, bestScore: null,
+    elapsedMs: 0, minimumReached: false };
   record("round_start", { opening: OPENING, side: COLOUR[SIDE], requiredMs: REQUIRED_MS });
   enterPlay();
 }
@@ -183,6 +187,12 @@ function newAttempt() {
   game.busy = false;
   game.lastComputer = null;
   game.attemptOpen = true;
+  game.prevScore = game.lastScore ?? null;
+  // Rough per-game score (puzzle only, needs a version 2 opponent file with values).
+  // value: best final margin still reachable, from your side.
+  const start = game.kind === "round" && game.table.startValue != null
+    ? (game.human === 0 ? game.table.startValue : -game.table.startValue) : TARGET_MARGIN;
+  game.score = game.kind === "round" && game.table.values ? { value: start, pending: [], costs: [] } : null;
   selected = null;
   record("attempt_start", { kind: game.kind, opening: game.opening, side: COLOUR[game.human], attempt: game.attempt });
   render();
@@ -196,6 +206,25 @@ function abandonAttempt(reason) {
   game.attemptOpen = false;
 }
 
+// A move's cost is how much it lowers the best final margin still reachable (both sides
+// perfect from then on), so later consequences are included. Moves made in a row because
+// the computer is out are scored together once the next value is known.
+function settleMoves(value) {
+  const sc = game.score;
+  if (!sc) return;
+  const cost = Math.max(0, sc.value - value);
+  for (const _ of sc.pending) sc.costs.push(cost);
+  sc.pending = [];
+  sc.value = value;
+}
+
+// Score out of 100: each move scores 100 if perfect, otherwise 100 / (1 + points lost); averaged over the game.
+function gameScore() {
+  const costs = game.score ? game.score.costs : [];
+  if (!costs.length) return null;
+  return Math.round(100 * costs.reduce((t, c) => t + 1 / (1 + c), 0) / costs.length);
+}
+
 const myTurn = () => game && !game.over && !game.busy && game.state.current === game.human;
 
 function computerMove(state) {
@@ -203,7 +232,10 @@ function computerMove(state) {
     const legal = state.legalActions();
     return legal[Math.floor(Math.random() * legal.length)];
   }
-  return game.table.reply(positionKey(state));
+  const entry = game.table.lookup(positionKey(state));
+  if (!entry) return null;
+  if (entry.value !== null) settleMoves(game.human === 0 ? entry.value : -entry.value);
+  return entry.reply;
 }
 
 function computerTurn() {
@@ -242,8 +274,15 @@ function finishAttempt() {
   game.busy = false;
   game.attemptOpen = false;
   if (game.best === null || margin > game.best) game.best = margin;
+  settleMoves(margin);
+  const score = gameScore();
+  if (score !== null) {
+    game.lastScore = score;
+    if (game.bestScore === null || score > game.bestScore) game.bestScore = score;
+  }
   record("attempt_end", {
     kind: game.kind, opening: game.opening, attempt: game.attempt, scores: s, margin,
+    score, moveCosts: game.score ? game.score.costs : null,
     moves: game.state.history.slice(game.startMoves).map(h => h[1]),
   });
   render();
@@ -312,6 +351,7 @@ function clickCell(r, c) {
   const state = game.state;
   record("move", { by: "participant", player: state.current, action: p.action, piece: selected.piece, orientation });
   state.play(p.action);
+  if (game.score) game.score.pending.push(p.action);
   selected = null;
   if (state.gameOver) return finishAttempt();
   if (state.current !== game.human) return computerTurn();
@@ -423,13 +463,23 @@ function render() {
     ? `Practice game: you are ${COLOUR[me]}. The computer here plays randomly.`
     : `Puzzle: you are ${COLOUR[me]}. The computer plays perfectly.`;
   $("attemptInfo").textContent = `Attempt ${game.attempt}`;
-  $("bestInfo").textContent = game.best === null ? "" : `Best result: ${describeMargin(game.best)}`;
+  $("bestInfo").textContent = game.best === null ? "" : `Best result: ${describeMargin(game.best)}`
+    + (game.bestScore == null ? "" : `, best score ${game.bestScore}`);
   if (game.over) setStatus("Game over");
   else if (game.busy) setStatus(state.out[me] ? "You have no moves left. The computer plays on." : "Computer is moving", "them");
   else setStatus("Your move", "me");
 
   $("result").hidden = !game.over;
   $("practiceDoneBtn").hidden = game.kind !== "practice";
+  const showScore = game.over && game.lastScore != null && game.kind === "round";
+  $("resultScore").hidden = !showScore;
+  if (showScore) {
+    const prev = game.prevScore;
+    $("scoreValue").textContent = game.lastScore;
+    $("scoreChange").textContent = prev == null ? ""
+      : game.lastScore > prev ? `up from ${prev}` : game.lastScore < prev ? `down from ${prev}` : `same as last game`;
+    $("scoreChange").className = prev == null || game.lastScore === prev ? "" : game.lastScore > prev ? "up" : "down";
+  }
   if (game.over) {
     const s = state.scores();
     const margin = s[me] - s[1 - me];

@@ -24,27 +24,44 @@ class ReplyTable {
   constructor(buffer) {
     const view = new DataView(buffer);
     const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
-    if (magic !== "BLKR" || view.getUint32(4, true) !== 1) {
+    const version = view.getUint32(4, true);
+    if (magic !== "BLKR" || (version !== 1 && version !== 2)) {
       throw new Error("Not an opponent file, or the wrong version.");
     }
+    this.version = version;
     this.opening = view.getUint32(8, true);
     this.size = view.getUint32(12, true);
-    if (buffer.byteLength !== 16 + 10 * this.size) {
+    const perPosition = version === 2 ? 11 : 10;
+    if (buffer.byteLength !== 16 + perPosition * this.size) {
       throw new Error("Opponent file is the wrong length (incomplete download?).");
     }
     this.codes = new BigUint64Array(buffer, 16, this.size);
     this.replies = new Uint16Array(buffer, 16 + 8 * this.size, this.size);
+    // version 2 files also hold each position's value: exact final margin, Blue minus Yellow
+    this.values = version === 2 ? new Int8Array(buffer, 16 + 10 * this.size, this.size) : null;
   }
 
-  // The stored reply (an action id) for this position key, or null if it is not stored.
-  reply(key) {
+  _index(key) {
     const code = positionCode(key);
     let lo = 0, hi = this.size;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       if (this.codes[mid] < code) lo = mid + 1; else hi = mid;
     }
-    return lo < this.size && this.codes[lo] === code ? this.replies[lo] : null;
+    return lo < this.size && this.codes[lo] === code ? lo : -1;
+  }
+
+  // The stored reply (an action id) for this position key, or null if it is not stored.
+  reply(key) {
+    const i = this._index(key);
+    return i < 0 ? null : this.replies[i];
+  }
+
+  // {reply, value} for this position key (value is null in version 1 files), or null if not stored.
+  lookup(key) {
+    const i = this._index(key);
+    if (i < 0) return null;
+    return { reply: this.replies[i], value: this.values ? this.values[i] : null };
   }
 }
 
